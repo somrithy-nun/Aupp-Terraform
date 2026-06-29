@@ -57,6 +57,8 @@ pipeline {
 
                         terraform apply    -input=false -auto-approve tfplan
 
+                        terraform output -raw website_url > /tmp/ec2_ip.txt
+                        echo "EC2 IP: $(cat /tmp/ec2_ip.txt)"
                     '''
                 }
             }
