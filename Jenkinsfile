@@ -13,21 +13,16 @@ pipeline {
 
     stages {
         stage('Checkout Code') {
-            steps {
-                checkout scm
-            }
+            steps { checkout scm }
         }
 
         stage('Install AWS CLI') {
             steps {
-                sh '''
-                    set -eux
-                    apk add --no-cache aws-cli   # terraform image is Alpine-based
-                '''
+                sh 'apk add --no-cache aws-cli'
             }
         }
 
-        stage('Tool Versions') {
+        stage('Validate Tools') {
             steps {
                 sh '''
                     terraform version
@@ -38,13 +33,24 @@ pipeline {
 
         stage('Terraform Deploy') {
             steps {
-                sh '''
-                    set -eux
-                    terraform init  -input=false
-                    terraform validate
-                    terraform plan  -input=false -out=tfplan
-                    terraform apply -input=false -auto-approve tfplan
-                '''
+                withCredentials([
+                    string(credentialsId: 'aws-access-key-id',     variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh '''
+                        set -eux
+
+                        export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+                        export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+
+                        aws sts get-caller-identity   # verify credentials work
+
+                        terraform init     -input=false
+                        terraform validate
+                        terraform plan     -input=false -out=tfplan
+                        terraform apply    -input=false -auto-approve tfplan
+                    '''
+                }
             }
         }
     }
