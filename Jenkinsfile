@@ -10,7 +10,9 @@ pipeline {
         AWS_DEFAULT_REGION = 'us-east-1'
         TF_IN_AUTOMATION  = 'true'
         REPO_URL          = 'https://github.com/somrithy-nun/app-x-terraform.git'
-        APP_DIR           = '/home/ubuntu/app'
+        EC2_KEY_PAIR_NAME = 'vockey'
+        EC2_USER          = 'ec2-user'
+        APP_URL_FILE      = '/tmp/app_url.txt'
     }
 
     parameters {
@@ -28,7 +30,7 @@ pipeline {
 
         stage('Install Tools') {
             steps {
-                sh 'apk add --no-cache aws-cli openssh-client'
+                sh 'apk add --no-cache aws-cli curl openssh-client'
             }
         }
 
@@ -50,98 +52,84 @@ pipeline {
                         terraform validate
 
                         if [ "${REPLACE_EC2_INSTANCE}" = "true" ]; then
-                            terraform plan -input=false -replace="aws_instance.web" -out=tfplan
+                            terraform plan -input=false -var="key_pair_name=$EC2_KEY_PAIR_NAME" -replace="aws_instance.web" -out=tfplan
                         else
-                            terraform plan -input=false -out=tfplan
+                            terraform plan -input=false -var="key_pair_name=$EC2_KEY_PAIR_NAME" -out=tfplan
                         fi
 
                         terraform apply    -input=false -auto-approve tfplan
 
                         terraform output -raw public_ip  > /tmp/ec2_ip.txt
+                        terraform output -raw website_url > $APP_URL_FILE
                         echo "EC2 IP: $(cat /tmp/ec2_ip.txt)"
+                        echo "App URL: $(cat $APP_URL_FILE)"
                     '''
                 }
             }
         }
 
-        stage('Setup EC2 & Deploy') {
+        stage('Verify EC2 Deploy') {
             steps {
                 withCredentials([
-                    // ── This is how you use Secret File type ──
-                    file(credentialsId: 'vockey', variable: 'SSH_KEY_FILE'),
-                    string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                    file(credentialsId: 'vockey', variable: 'SSH_KEY_FILE')
                 ]) {
                     sh '''
                         set -eux
 
                         EC2_IP=$(cat /tmp/ec2_ip.txt)
+                        APP_URL=$(cat $APP_URL_FILE)
 
                         # Copy & fix permission of the .pem file
-                        cp $SSH_KEY_FILE /tmp/labsuser.pem
+                        cp "$SSH_KEY_FILE" /tmp/labsuser.pem
                         chmod 600 /tmp/labsuser.pem
 
                         SSH_OPTS="-i /tmp/labsuser.pem -o StrictHostKeyChecking=no -o ConnectTimeout=30"
 
-                        # ── Wait for EC2 to be SSH-ready ──────────────────────────
+                        # Wait for EC2 to accept SSH with the key pair Terraform attached.
                         echo "Waiting for EC2 to be ready..."
+                        CONNECTED=false
                         for i in $(seq 1 15); do
-                            ssh $SSH_OPTS ubuntu@$EC2_IP "echo connected" && break
+                            if ssh $SSH_OPTS $EC2_USER@$EC2_IP "echo connected"; then
+                                CONNECTED=true
+                                break
+                            fi
                             echo "Attempt $i failed, retrying in 15s..."
                             sleep 15
                         done
 
-                        # ── Run everything on EC2 ─────────────────────────────────
-                        ssh $SSH_OPTS ubuntu@$EC2_IP << ENDSSH
-                            set -eux
+                        if [ "$CONNECTED" != "true" ]; then
+                            echo "SSH failed. Make sure Terraform launched this instance with key_pair_name=$EC2_KEY_PAIR_NAME."
+                            exit 1
+                        fi
 
-                            # 1. Install Docker
-                            sudo apt-get update -y
-                            sudo apt-get install -y ca-certificates curl gnupg
+                        # Terraform user_data performs the install/build/run. SSH is only for diagnostics.
+                        ssh $SSH_OPTS $EC2_USER@$EC2_IP << 'ENDSSH'
+set -eux
 
-                            sudo install -m 0755 -d /etc/apt/keyrings
-                            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-                            sudo chmod a+r /etc/apt/keyrings/docker.gpg
+if ! sudo cloud-init status --wait; then
+    sudo tail -200 /var/log/cloud-init-output.log || true
+    sudo tail -200 /var/log/user-data.log || true
+    exit 1
+fi
 
-                            echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu jammy stable" | \
-                                sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo systemctl status docker --no-pager
+sudo docker ps --filter "name=terraform-docker-app"
+sudo docker logs --tail=80 terraform-docker-app || true
+curl -fsS http://localhost/
+ENDSSH
 
-                            sudo apt-get update -y
-                            sudo apt-get install -y docker-ce docker-ce-cli containerd.io
-
-                            sudo systemctl enable docker
-                            sudo systemctl start docker
-                            sudo usermod -aG docker ubuntu
-                            newgrp docker
-
-                            # 2. Clone or pull the repo
-                            if [ -d "/home/ubuntu/app" ]; then
-                                echo "Repo exists, pulling latest..."
-                                cd /home/ubuntu/app && git pull
-                            else
-                                git clone $REPO_URL /home/ubuntu/app
+                        echo "Waiting for app HTTP endpoint..."
+                        for i in $(seq 1 20); do
+                            if curl -fsS "$APP_URL" >/dev/null; then
+                                echo "App deployed at $APP_URL"
+                                exit 0
                             fi
+                            echo "HTTP attempt $i failed, retrying in 10s..."
+                            sleep 10
+                        done
 
-                            cd /home/ubuntu/app
-
-                            # 3. Stop existing container if running
-                            sudo docker stop myapp 2>/dev/null || true
-                            sudo docker rm   myapp 2>/dev/null || true
-
-                            # 4. Build Docker image
-                            sudo docker build -t myapp .
-
-                            # 5. Run container on port 3000
-                            sudo docker run -d \
-                                --name myapp \
-                                --restart always \
-                                -p 3000:3000 \
-                                myapp
-
-                            echo "App is running!"
-                        ENDSSH
-
-                        echo "✅ App deployed at http://$EC2_IP:3000"
+                        echo "App did not become reachable at $APP_URL"
+                        exit 1
                     '''
                 }
             }
