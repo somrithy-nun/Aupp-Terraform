@@ -1,5 +1,10 @@
 pipeline {
-    agent any
+    agent {
+        docker {
+            image 'hashicorp/terraform:1.7.5'
+            args '--entrypoint=""'
+        }
+    }
 
     environment {
         AWS_DEFAULT_REGION = 'us-east-1'
@@ -8,7 +13,7 @@ pipeline {
 
     stages {
 
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
                 checkout scm
             }
@@ -22,7 +27,9 @@ pipeline {
 
         stage('Terraform Init') {
             steps {
-                sh 'terraform init -input=false'
+                sh '''
+                    terraform init -input=false -no-color
+                '''
             }
         }
 
@@ -34,13 +41,23 @@ pipeline {
 
         stage('Terraform Plan') {
             steps {
-                sh 'terraform plan -input=false -out=tfplan'
+                sh '''
+                    terraform plan \
+                    -input=false \
+                    -no-color \
+                    -out=tfplan
+                '''
             }
         }
 
-        stage('Apply (Manual Approval)') {
+        stage('Approval') {
             steps {
-                input message: "Approve Terraform Apply?"
+                input message: "Do you want to apply Terraform changes?"
+            }
+        }
+
+        stage('Terraform Apply') {
+            steps {
                 sh 'terraform apply -auto-approve tfplan'
             }
         }
@@ -48,11 +65,11 @@ pipeline {
 
     post {
         success {
-            echo "Terraform pipeline SUCCESS"
+            echo "✅ Terraform deployment SUCCESS"
         }
 
         failure {
-            echo "Terraform pipeline FAILED"
+            echo "❌ Terraform deployment FAILED"
         }
 
         always {
