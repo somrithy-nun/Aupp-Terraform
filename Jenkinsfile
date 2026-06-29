@@ -14,7 +14,7 @@ pipeline {
             }
         }
 
-        stage('Terraform Version Check') {
+        stage('Terraform Version') {
             steps {
                 sh 'terraform version'
             }
@@ -26,27 +26,37 @@ pipeline {
             }
         }
 
-        stage('Validate') {
+        stage('Terraform Validate') {
             steps {
                 sh 'terraform validate'
             }
         }
 
-        stage('Plan') {
+        stage('Terraform Plan') {
             steps {
-                sh '''
-                    terraform plan \
-                    -var-file=terraform.tfvars \
-                    -out=tfplan
-                '''
+                sh 'terraform plan -input=false -out=tfplan'
             }
         }
 
-        stage('Apply') {
+        stage('Apply (Manual Approval)') {
             steps {
-                echo "Apply enabled"
-                // sh 'terraform apply -auto-approve tfplan'
+                input message: "Approve Terraform Apply?"
+                sh 'terraform apply -auto-approve tfplan'
             }
+        }
+    }
+
+    post {
+        success {
+            echo "Terraform pipeline SUCCESS"
+        }
+
+        failure {
+            echo "Terraform pipeline FAILED"
+        }
+
+        always {
+            archiveArtifacts artifacts: 'tfplan', allowEmptyArchive: true
         }
     }
 }
