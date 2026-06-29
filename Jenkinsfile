@@ -27,9 +27,11 @@ pipeline {
 
         stage('Terraform Init') {
             steps {
-                sh '''
-                    terraform init -input=false -no-color
-                '''
+                cache(maxCacheSize: 500, caches: [
+                    arbitraryFileCache(path: '.terraform', cacheValidityDecidingFile: '.terraform.lock.hcl')
+                ]) {
+                    sh 'terraform init -input=false -no-color'
+                }
             }
         }
 
