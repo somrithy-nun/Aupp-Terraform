@@ -27,40 +27,11 @@ pipeline {
 
         stage('Terraform Init') {
             steps {
-                cache(maxCacheSize: 500, caches: [
-                    arbitraryFileCache(path: '.terraform', cacheValidityDecidingFile: '.terraform.lock.hcl')
-                ]) {
-                    sh 'terraform init -input=false -no-color'
-                }
-            }
-        }
-
-        stage('Terraform Validate') {
-            steps {
-                sh 'terraform validate'
-            }
-        }
-
-        stage('Terraform Plan') {
-            steps {
                 sh '''
-                    terraform plan \
-                    -input=false \
-                    -no-color \
-                    -out=tfplan
+                    terraform init
+                    terraform plan
+                    terraform apply -auto-approve
                 '''
-            }
-        }
-
-        stage('Approval') {
-            steps {
-                input message: "Do you want to apply Terraform changes?"
-            }
-        }
-
-        stage('Terraform Apply') {
-            steps {
-                sh 'terraform apply -auto-approve tfplan'
             }
         }
     }
