@@ -20,7 +20,7 @@ rm -rf "$APP_DIR"
 git clone --branch "${github_branch}" --depth 1 "${github_repo_url}" "$APP_DIR"
 
 echo "===== Building Docker image ====="
-BUILD_DIR="$APP_DIR/${app_subdir}"
+BUILD_DIR="$APP_DIR"
 if [ ! -f "$BUILD_DIR/Dockerfile" ]; then
   echo "ERROR: Dockerfile not found at $BUILD_DIR/Dockerfile"
   echo "Repo contents:"
