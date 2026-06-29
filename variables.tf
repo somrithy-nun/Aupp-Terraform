@@ -19,7 +19,7 @@ variable "instance_type" {
 variable "key_pair_name" {
   description = "Name of an EXISTING EC2 key pair to enable SSH access. Leave empty to skip SSH key."
   type        = string
-  default     = ""
+  default     = "vockey"
 }
 
 variable "github_repo_url" {
