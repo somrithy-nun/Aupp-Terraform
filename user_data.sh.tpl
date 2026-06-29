@@ -1,36 +1,42 @@
 #!/bin/bash
 set -euxo pipefail
 
-# Log everything to a file for easy debugging on the instance
+# Log everything to a file for easy debugging on the instance.
 exec > >(tee /var/log/user-data.log) 2>&1
 
 echo "===== Updating packages ====="
 dnf update -y
 
-echo "===== Installing Nginx and Git ====="
-dnf install -y nginx git
+echo "===== Installing Docker and Git ====="
+dnf install -y docker git
 
-echo "===== Enabling and starting Nginx ====="
-systemctl enable nginx
-systemctl start nginx
+echo "===== Enabling and starting Docker ====="
+systemctl enable docker
+systemctl start docker
 
 echo "===== Cloning GitHub repository ====="
-APP_DIR="/opt/website"
+APP_DIR="/opt/app-source"
 rm -rf "$APP_DIR"
 git clone --branch "${github_branch}" --depth 1 "${github_repo_url}" "$APP_DIR"
 
-echo "===== Deploying static files to Nginx web root ====="
-WEB_ROOT="/usr/share/nginx/html"
-rm -rf "$${WEB_ROOT:?}"/*
+echo "===== Building Docker image ====="
+BUILD_DIR="$APP_DIR/${app_subdir}"
+if [ ! -f "$BUILD_DIR/Dockerfile" ]; then
+  echo "ERROR: Dockerfile not found at $BUILD_DIR/Dockerfile"
+  echo "Repo contents:"
+  find "$APP_DIR" -maxdepth 3 -type f | sort
+  exit 1
+fi
+docker build -t "${docker_image_name}:latest" "$BUILD_DIR"
 
-# Copy the contents of the chosen subdirectory into the web root
-cp -r "$APP_DIR/${site_subdir}/." "$WEB_ROOT/"
+echo "===== Starting Docker container ====="
+docker rm -f "${container_name}" || true
+docker run -d \
+  --name "${container_name}" \
+  --restart unless-stopped \
+  -p ${host_port}:${container_port} \
+  "${docker_image_name}:latest"
 
-# Make sure permissions are correct
-chown -R nginx:nginx "$WEB_ROOT"
-chmod -R 755 "$WEB_ROOT"
+docker ps --filter "name=${container_name}"
 
-echo "===== Restarting Nginx to serve new content ====="
-systemctl restart nginx
-
-echo "===== Done! Website deployed. ====="
+echo "===== Done! Docker app deployed on port ${host_port}. ====="

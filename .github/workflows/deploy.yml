@@ -1,0 +1,79 @@
+name: Deploy Docker App to EC2
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "app/**"
+      - "*.tf"
+      - "user_data.sh.tpl"
+      - ".github/workflows/deploy.yml"
+
+permissions:
+  contents: read
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+jobs:
+  deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Pull code from GitHub
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t terraform-docker-app:ci ./app
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Initialize Terraform
+        run: terraform init
+
+      - name: Check Terraform formatting
+        run: terraform fmt -check
+
+      - name: Validate Terraform
+        run: terraform validate
+
+      - name: Create EC2 instance and deploy container
+        env:
+          AWS_REGION_VAR: ${{ vars.AWS_REGION }}
+          EC2_KEY_PAIR_NAME: ${{ vars.EC2_KEY_PAIR_NAME }}
+          SSH_INGRESS_CIDR: ${{ vars.SSH_INGRESS_CIDR }}
+        run: |
+          args=(
+            -var="github_repo_url=https://github.com/${GITHUB_REPOSITORY}.git"
+            -var="github_branch=${GITHUB_REF_NAME}"
+            -var="app_subdir=app"
+          )
+
+          if [ -n "$AWS_REGION_VAR" ]; then
+            args+=(-var="aws_region=$AWS_REGION_VAR")
+          fi
+
+          if [ -n "$EC2_KEY_PAIR_NAME" ]; then
+            args+=(-var="key_pair_name=$EC2_KEY_PAIR_NAME")
+          fi
+
+          if [ -n "$SSH_INGRESS_CIDR" ]; then
+            args+=(-var="ssh_ingress_cidr=$SSH_INGRESS_CIDR")
+          fi
+
+          terraform apply -auto-approve "${args[@]}"
+
+      - name: Show public URL
+        run: terraform output website_url

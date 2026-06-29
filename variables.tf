@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "project_name" {
   description = "A name prefix used for tagging and naming resources."
   type        = string
-  default     = "static-website"
+  default     = "docker-ec2-app"
 }
 
 variable "instance_type" {
@@ -23,10 +23,9 @@ variable "key_pair_name" {
 }
 
 variable "github_repo_url" {
-  description = "HTTPS clone URL of the GitHub repository that contains the static website."
+  description = "HTTPS clone URL of the GitHub repository that contains this Dockerized application."
   type        = string
-  # Example: https://github.com/your-username/your-static-site.git
-  default     = "https://github.com/cloudacademy/static-website-example.git"
+  default     = "https://github.com/somrithy-nun/app-x-terraform.git"
 }
 
 variable "github_branch" {
@@ -35,10 +34,34 @@ variable "github_branch" {
   default     = "main"
 }
 
-variable "site_subdir" {
-  description = "Subdirectory inside the repo that contains index.html. Use '.' if files are at the repo root."
+variable "app_subdir" {
+  description = "Subdirectory inside the GitHub repo that contains the Dockerfile."
   type        = string
-  default     = "."
+  default     = "app"
+}
+
+variable "docker_image_name" {
+  description = "Local Docker image name to build on the EC2 instance."
+  type        = string
+  default     = "terraform-docker-app"
+}
+
+variable "container_name" {
+  description = "Name of the Docker container to run on the EC2 instance."
+  type        = string
+  default     = "terraform-docker-app"
+}
+
+variable "container_port" {
+  description = "Port exposed by the application inside the Docker container."
+  type        = number
+  default     = 3000
+}
+
+variable "host_port" {
+  description = "Public port on the EC2 instance that forwards to the container."
+  type        = number
+  default     = 80
 }
 
 variable "ssh_ingress_cidr" {

@@ -1,13 +1,13 @@
 resource "aws_security_group" "web_sg" {
   name        = "${var.project_name}-sg"
-  description = "Allow HTTP and SSH inbound traffic"
+  description = "Allow app HTTP and SSH inbound traffic"
   vpc_id      = data.aws_vpc.default.id
 
-  # HTTP - so the website is reachable from the browser
+  # HTTP - so the containerized app is reachable from the browser.
   ingress {
-    description = "HTTP from anywhere"
-    from_port   = 80
-    to_port     = 80
+    description = "Application HTTP from anywhere"
+    from_port   = var.host_port
+    to_port     = var.host_port
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }

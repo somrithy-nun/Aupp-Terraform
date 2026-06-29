@@ -1,9 +1,13 @@
 locals {
   # Render the bootstrap script with our variables injected.
   user_data = templatefile("${path.module}/user_data.sh.tpl", {
-    github_repo_url = var.github_repo_url
-    github_branch   = var.github_branch
-    site_subdir     = var.site_subdir
+    github_repo_url   = var.github_repo_url
+    github_branch     = var.github_branch
+    app_subdir        = var.app_subdir
+    docker_image_name = var.docker_image_name
+    container_name    = var.container_name
+    container_port    = var.container_port
+    host_port         = var.host_port
   })
 }
 
@@ -15,7 +19,7 @@ resource "aws_instance" "web" {
   # key_pair_name may be empty; only set it if provided.
   key_name = var.key_pair_name != "" ? var.key_pair_name : null
 
-  # Bootstrap: install Nginx, pull from GitHub, deploy.
+  # Bootstrap: install Docker, pull from GitHub, build, and run the container.
   user_data                   = local.user_data
   user_data_replace_on_change = true
 

@@ -3,10 +3,11 @@
 
 | Resource              | Purpose                                              |
 |-----------------------|------------------------------------------------------|
-| `aws_instance.web`    | EC2 instance running the web server                  |
-| `aws_security_group`  | Opens ports 80 (HTTP) and 22 (SSH)                   |
+| `aws_instance.web`    | EC2 instance running the Docker container            |
+| `aws_security_group`  | Opens the app port, default 80, and SSH              |
 | `data.aws_ami`        | Latest Amazon Linux 2023 AMI                         |
-| `user_data.sh.tpl`    | Bootstrap script: installs Nginx, clones repo, deploys |
+| `user_data.sh.tpl`    | Bootstrap script: installs Docker, clones repo, builds, and runs the app |
+| `app/`                | Example Dockerized Node.js app                       |
 
 ## Prerequisites
 
@@ -17,6 +18,6 @@
    export AWS_SECRET_ACCESS_KEY="..."
    export AWS_DEFAULT_REGION="us-east-1"
    ```
-3. A public GitHub repo containing your static site (must include `index.html`).
+3. A public GitHub repo containing this project and `app/Dockerfile`.
 
 ## Usage
